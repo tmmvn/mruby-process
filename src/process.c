@@ -90,7 +90,7 @@ mrb_exit_common(mrb_state *mrb, int bang)
 static mrb_value
 mrb_f_abort(mrb_state *mrb, mrb_value klass)
 {
-  mrb_value status = mrb_fixnum_value(EXIT_FAILURE);
+  mrb_int status = EXIT_FAILURE;
   mrb_value error;
   mrb_int argc;
 
@@ -100,7 +100,7 @@ mrb_f_abort(mrb_state *mrb, mrb_value klass)
     fprintf(stderr, "%s\n", mrb_string_value_ptr(mrb, error));
   }
 
-  _exit(mrb_fixnum(status));
+  _exit(status);
 
   /* maybe not reached */
   return mrb_nil_value();

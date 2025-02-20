@@ -19,8 +19,20 @@
  * SOFTWARE.
  */
 #include <stdlib.h>
+#ifdef _WIN32
+#include <string.h> 
+static int strcasecmp(const char* s1, const char* s2)
+{
+	while(*s1 && (tolower((unsigned char)*s1) == tolower((unsigned char)*s2)))
+	{
+		s1++;
+		s2++;
+	}
+	return tolower((unsigned char)*s1) - tolower((unsigned char)*s2);
+}
+#else
 #include <strings.h>
-#include <string.h>
+#endif
 #include <unistd.h>
 #include <sys/types.h>
 #include <sys/stat.h>

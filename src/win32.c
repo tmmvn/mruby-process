@@ -27,6 +27,7 @@
 #include <errno.h>
 #include <tchar.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <io.h>
 #include <fcntl.h>
 
@@ -431,7 +432,7 @@ static struct ChildRecord* CreateChild(const WCHAR* shell, const WCHAR* cmd, HAN
 	}
 	CloseHandle(pi.hThread);
 	child->hProcess = pi.hProcess;
-	child->pid = (pid_t)pi.dwProcessId;
+	child->pid = (pid_t)(uintptr_t)pi.dwProcessId;
 	return child;
 }
 

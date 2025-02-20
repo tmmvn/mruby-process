@@ -18,12 +18,10 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
-
 #include "mruby.h"
 #include "mruby/string.h"
 #include "mruby/data.h"
 #include "mruby/ext/process.h"
-
 #include <windows.h>
 #include <process.h>
 #include <errno.h>
@@ -33,550 +31,547 @@
 #include <fcntl.h>
 
 #define BUFSIZE 4096
-
 #define MAXCHILDNUM 256 /* max num of child processes */
 
 #ifndef P_OVERLAY
-# define P_OVERLAY 2
+#define P_OVERLAY 2
 #endif
 
 #ifndef P_NOWAIT
-# define P_NOWAIT 1
+#define P_NOWAIT 1
 #endif
 
-/* License: Ruby's */
-static struct ChildRecord {
-    HANDLE hProcess;
-    pid_t pid;
+ /* License: Ruby's */
+static struct ChildRecord
+{
+	HANDLE hProcess;
+	pid_t pid;
 } ChildRecord[MAXCHILDNUM];
 
 /* License: Ruby's */
 #define FOREACH_CHILD(v) do { \
-    struct ChildRecord* v; \
-    for (v = ChildRecord; v < ChildRecord + sizeof(ChildRecord) / sizeof(ChildRecord[0]); ++v)
+	struct ChildRecord* v; \
+	for (v = ChildRecord; v < ChildRecord + sizeof(ChildRecord) / sizeof(ChildRecord[0]); ++v)
 #define END_FOREACH_CHILD } while (0)
 
-static FARPROC get_proc_address(const char *module, const char *func, HANDLE *mh);
-static pid_t poll_child_status(struct ChildRecord *child, int *stat_loc);
-static struct ChildRecord *FindChildSlot(pid_t pid);
-static struct ChildRecord *FindChildSlotByHandle(HANDLE h);
-static struct ChildRecord *FindFreeChildSlot(void);
-static void CloseChildHandle(struct ChildRecord *child);
-static struct ChildRecord *CreateChild(const WCHAR *cmd, const WCHAR *prog, HANDLE hIn, HANDLE hOut, HANDLE hErr, LPVOID env);
-static pid_t child_result(struct ChildRecord *child, int mode);
+static FARPROC get_proc_address(const char* module, const char* func, HANDLE* mh);
+static pid_t poll_child_status(struct ChildRecord* child, int* stat_loc);
+static struct ChildRecord* FindChildSlot(pid_t pid);
+static struct ChildRecord* FindChildSlotByHandle(HANDLE h);
+static struct ChildRecord* FindFreeChildSlot(void);
+static void CloseChildHandle(struct ChildRecord* child);
+static struct ChildRecord* CreateChild(const WCHAR* cmd, const WCHAR* prog, HANDLE hIn, HANDLE hOut, HANDLE hErr, LPVOID env);
+static pid_t child_result(struct ChildRecord* child, int mode);
 static char* argv_to_str(char* const* argv);
-static WCHAR* str_to_wstr(const char *utf8, int mlen);
+static WCHAR* str_to_wstr(const char* utf8, int mlen);
 static HANDLE fd_to_handle(mrb_value fd, int def_fd);
 
-mrb_value
-mrb_argv0(mrb_state *mrb)
+mrb_value mrb_argv0(mrb_state* mrb)
 {
-    TCHAR argv0[MAX_PATH + 1];
-
-    GetModuleFileName(NULL, argv0, MAX_PATH + 1);
-
-    return mrb_str_new_cstr(mrb, argv0);
+	TCHAR argv0[MAX_PATH + 1];
+	GetModuleFileName(NULL, argv0, MAX_PATH + 1);
+	return mrb_str_new_cstr(mrb, argv0);
 }
 
-mrb_value
-mrb_progname(mrb_state *mrb)
+mrb_value mrb_progname(mrb_state* mrb)
 {
-    TCHAR argv0[MAX_PATH + 1];
-    char *progname;
-
-    GetModuleFileName(NULL, argv0, MAX_PATH + 1);
-
-    progname = strrchr(argv0, '\\');
-
-    if (progname)
-        progname++;
-    else
-        progname = argv0;
-
-    return mrb_str_new_cstr(mrb, progname);
+	TCHAR argv0[MAX_PATH + 1];
+	char* progname;
+	GetModuleFileName(NULL, argv0, MAX_PATH + 1);
+	progname = strrchr(argv0, '\\');
+	if(progname)
+	{
+		progname++;
+	}
+	else
+	{
+		progname = argv0;
+	}
+	return mrb_str_new_cstr(mrb, progname);
 }
 
-int
-fork(void)
+int fork(void)
 {
-    return -1;
+	return -1;
 }
 
-pid_t
-getppid(void)
+pid_t getppid(void)
 {
-    typedef long (WINAPI query_func)(HANDLE, int, void *, ULONG, ULONG *);
-    static query_func *pNtQueryInformationProcess = (query_func *) - 1;
-    pid_t ppid = 0;
-
-    if (pNtQueryInformationProcess == (query_func *) - 1)
-        pNtQueryInformationProcess = (query_func *)get_proc_address("ntdll.dll", "NtQueryInformationProcess", NULL);
-
-    if (pNtQueryInformationProcess) {
-        struct {
-            long ExitStatus;
-            void* PebBaseAddress;
-            uintptr_t AffinityMask;
-            uintptr_t BasePriority;
-            uintptr_t UniqueProcessId;
-            uintptr_t ParentProcessId;
-        } pbi;
-
-        ULONG len;
-        long ret = pNtQueryInformationProcess(GetCurrentProcess(), 0, &pbi, sizeof(pbi), &len);
-
-        if (!ret)
-            ppid = pbi.ParentProcessId;
-    }
-
-    return ppid;
+	typedef long (WINAPI query_func)(HANDLE, int, void*, ULONG, ULONG*);
+	static query_func* pNtQueryInformationProcess = (query_func*)-1;
+	pid_t ppid = 0;
+	if(pNtQueryInformationProcess == (query_func*)-1)
+	{
+		pNtQueryInformationProcess = (query_func*)get_proc_address("ntdll.dll", "NtQueryInformationProcess", NULL);
+	}
+	if(pNtQueryInformationProcess)
+	{
+		struct
+		{
+			long ExitStatus;
+			void* PebBaseAddress;
+			uintptr_t AffinityMask;
+			uintptr_t BasePriority;
+			uintptr_t UniqueProcessId;
+			uintptr_t ParentProcessId;
+		} pbi;
+		ULONG len;
+		long ret = pNtQueryInformationProcess(GetCurrentProcess(), 0, &pbi, sizeof(pbi), &len);
+		if(!ret)
+		{
+			ppid = pbi.ParentProcessId;
+		}
+	}
+	return ppid;
 }
 
-pid_t
-waitpid(pid_t pid, int *stat_loc, int options)
+pid_t waitpid(pid_t pid, int* stat_loc, int options)
 {
-    DWORD timeout;
-    struct ChildRecord* child;
-    int count, retried, ret;
-
-    if (options == WNOHANG)
-        timeout = 0;
-    else
-        timeout = INFINITE;
-
-    if (pid == -1) {
-        HANDLE targets[MAXCHILDNUM];
-        struct ChildRecord* cause;
-
-        count = 0;
-
-        FOREACH_CHILD(child) {
-            if (!child->pid || child->pid < 0) continue;
-            if ((pid = poll_child_status(child, stat_loc))) return pid;
-            targets[count++] = child->hProcess;
-        } END_FOREACH_CHILD;
-
-        if (!count) {
-            errno = ECHILD;
-            return -1;
-        }
-
-        ret = WaitForMultipleObjects(count, targets, FALSE, timeout);
-        if (ret == WAIT_TIMEOUT) return 0;
-        if ((ret -= WAIT_OBJECT_0) == count) return -1;
-        if (ret > count) return -1;
-
-        cause = FindChildSlotByHandle(targets[ret]);
-
-        if (!cause) {
-            errno = ECHILD;
-            return -1;
-        }
-
-        return poll_child_status(cause, stat_loc);
-    }
-    else {
-        child   = FindChildSlot(pid);
-        retried = 0;
-
-        if (!child) {
-            errno = ECHILD;
-            return -1;
-        }
-
-        while (!(pid = poll_child_status(child, stat_loc))) {
-            /* wait... */
-            ret = WaitForMultipleObjects(1, &child->hProcess, FALSE, timeout);
-
-            if (ret == WAIT_OBJECT_0 + 1) return -1; /* maybe EINTR */
-            if (ret != WAIT_OBJECT_0) {
-                /* still active */
-                if (options & WNOHANG) {
-                    pid = 0;
-                    break;
-                }
-                ++retried;
-            }
-        }
-
-        if (pid == -1 && retried) pid = 0;
-    }
-
-    return pid;
+	DWORD timeout;
+	struct ChildRecord* child;
+	int count, retried, ret;
+	if(options == WNOHANG)
+	{
+		timeout = 0;
+	}
+	else
+	{
+		timeout = INFINITE;
+	}
+	if(pid == -1)
+	{
+		HANDLE targets[MAXCHILDNUM];
+		struct ChildRecord* cause;
+		count = 0;
+		FOREACH_CHILD(child)
+		{
+			if(!child->pid || child->pid < 0)
+			{
+				continue;
+			}
+			if((pid = poll_child_status(child, stat_loc)))
+			{
+				return pid;
+			}
+			targets[count++] = child->hProcess;
+		} END_FOREACH_CHILD;
+		if(!count)
+		{
+			errno = ECHILD;
+			return -1;
+		}
+		ret = WaitForMultipleObjects(count, targets, FALSE, timeout);
+		if(ret == WAIT_TIMEOUT)
+		{
+			return 0;
+		}
+		if((ret -= WAIT_OBJECT_0) == count)
+		{
+			return -1;
+		}
+		if(ret > count)
+		{
+			return -1;
+		}
+		cause = FindChildSlotByHandle(targets[ret]);
+		if(!cause)
+		{
+			errno = ECHILD;
+			return -1;
+		}
+		return poll_child_status(cause, stat_loc);
+	}
+	else
+	{
+		child = FindChildSlot(pid);
+		retried = 0;
+		if(!child)
+		{
+			errno = ECHILD;
+			return -1;
+		}
+		while(!(pid = poll_child_status(child, stat_loc)))
+		{
+			/* wait... */
+			ret = WaitForMultipleObjects(1, &child->hProcess, FALSE, timeout);
+			if(ret == WAIT_OBJECT_0 + 1)
+			{
+				return -1; /* maybe EINTR */
+			}
+			if(ret != WAIT_OBJECT_0)
+			{
+				/* still active */
+				if(options & WNOHANG)
+				{
+					pid = 0;
+					break;
+				}
+				++retried;
+			}
+		}
+		if(pid == -1 && retried)
+		{
+			pid = 0;
+		}
+	}
+	return pid;
 }
 
-int
-kill(pid_t pid, int sig)
+int kill(pid_t pid, int sig)
 {
-    pid_t ret = 0;
-    DWORD ctrlEvent, status;
-    HANDLE hProc;
-    struct ChildRecord* child;
-
-    if (pid < 0 || (pid == 0 && sig != SIGINT))
-        return -1;
-
-    if ((unsigned int)pid == GetCurrentProcessId() && (sig != 0 && sig != SIGKILL)) {
-        ret = raise(sig);
-        return ret;
-    }
-
-    switch (sig) {
-        case 0:
-            hProc = OpenProcess(PROCESS_QUERY_INFORMATION, FALSE, (DWORD)pid);
-
-            if (hProc == NULL || hProc == INVALID_HANDLE_VALUE) {
-                ret = -1;
-            }
-            else {
-                CloseHandle(hProc);
-            }
-
-            break;
-
-        case SIGINT:
-            ctrlEvent = CTRL_C_EVENT;
-
-            if (pid != 0) ctrlEvent = CTRL_BREAK_EVENT;
-            if (!GenerateConsoleCtrlEvent(ctrlEvent, (DWORD)pid)) ret = -1;
-
-            break;
-
-        case SIGKILL:
-            child = FindChildSlot(pid);
-
-            if (child) {
-                hProc = child->hProcess;
-            }
-            else {
-                hProc = OpenProcess(PROCESS_TERMINATE | PROCESS_QUERY_INFORMATION, FALSE, (DWORD)pid);
-            }
-
-            if (hProc == NULL || hProc == INVALID_HANDLE_VALUE) {
-                ret = -1;
-            }
-            else {
-                if (!GetExitCodeProcess(hProc, &status)) {
-                    ret = -1;
-                }
-                else if (status == STILL_ACTIVE) {
-                    if (!TerminateProcess(hProc, 0)) {
-                        ret = -1;
-                    }
-                }
-                else {
-                    ret = -1;
-                }
-
-                if (!child) {
-                    CloseHandle(hProc);
-                }
-            }
-
-            break;
-
-    default:
-        ret = -1;
-    }
-
-    return ret;
+	pid_t ret = 0;
+	DWORD ctrlEvent, status;
+	HANDLE hProc;
+	struct ChildRecord* child;
+	if(pid < 0 || (pid == 0 && sig != SIGINT))
+	{
+		return -1;
+	}
+	if((unsigned int)pid == GetCurrentProcessId() && (sig != 0 && sig != SIGKILL))
+	{
+		ret = raise(sig);
+		return ret;
+	}
+	switch(sig)
+	{
+	case 0:
+		hProc = OpenProcess(PROCESS_QUERY_INFORMATION, FALSE, (DWORD)pid);
+		if(hProc == NULL || hProc == INVALID_HANDLE_VALUE)
+		{
+			ret = -1;
+		}
+		else
+		{
+			CloseHandle(hProc);
+		}
+		break;
+	case SIGINT:
+		ctrlEvent = CTRL_C_EVENT;
+		if(pid != 0)
+		{
+			ctrlEvent = CTRL_BREAK_EVENT;
+		}
+		if(!GenerateConsoleCtrlEvent(ctrlEvent, (DWORD)pid))
+		{
+			ret = -1;
+		}
+		break;
+	case SIGKILL:
+		child = FindChildSlot(pid);
+		if(child)
+		{
+			hProc = child->hProcess;
+		}
+		else
+		{
+			hProc = OpenProcess(PROCESS_TERMINATE | PROCESS_QUERY_INFORMATION, FALSE, (DWORD)pid);
+		}
+		if(hProc == NULL || hProc == INVALID_HANDLE_VALUE)
+		{
+			ret = -1;
+		}
+		else
+		{
+			if(!GetExitCodeProcess(hProc, &status))
+			{
+				ret = -1;
+			}
+			else if(status == STILL_ACTIVE)
+			{
+				if(!TerminateProcess(hProc, 0))
+				{
+					ret = -1;
+				}
+			}
+			else
+			{
+				ret = -1;
+			}
+			if(!child)
+			{
+				CloseHandle(hProc);
+			}
+		}
+		break;
+	default:
+		ret = -1;
+	}
+	return ret;
 }
 
-pid_t
-spawnve(const char *shell, char *const argv[], char *const envp[], mrb_value in, mrb_value out, mrb_value err)
+pid_t spawnve(const char* shell, char* const argv[], char* const envp[], mrb_value in, mrb_value out, mrb_value err)
 {
-    LPTSTR lpszCurrentVariable;
-    TCHAR chNewEnv[BUFSIZE];
-    HANDLE input, output, error;
-
-    int i     = 0;
-    char* env = envp[i];
-    pid_t ret = -1;
-    char *cmd = argv_to_str(argv);
-
-    WCHAR *wcmd, *wshell;
-    char tCmd[strlen(cmd)];
-    char tShell[strlen(shell)];
-
-    input  = fd_to_handle(in, STD_INPUT_HANDLE);
-    output = fd_to_handle(out, STD_OUTPUT_HANDLE);
-    error  = fd_to_handle(err, STD_ERROR_HANDLE);
-
-    lpszCurrentVariable = (LPTSTR) chNewEnv;
-
-    while (env != NULL) {
-        if (FAILED(strcpy(lpszCurrentVariable, TEXT(env)))) {
-            return FALSE;
-        }
-
-        lpszCurrentVariable += lstrlen(lpszCurrentVariable) + 1;
-
-        i++;
-        env = envp[i];
-    }
-
-    *lpszCurrentVariable = (TCHAR)0;
-
-    strcpy(tCmd,cmd);
-    strcpy(tShell,shell);
-
-    wshell = str_to_wstr(tShell, strlen(tShell));
-    wcmd   = str_to_wstr(tCmd, strlen(tCmd));
-
-    ret = child_result(CreateChild(wshell, wcmd, input, output, error, (LPVOID) chNewEnv), P_NOWAIT);
-
-    free(wshell);
-    free(wcmd);
-    free(cmd);
-
-    return ret;
+	LPTSTR lpszCurrentVariable;
+	TCHAR chNewEnv[BUFSIZE];
+	HANDLE input, output, error;
+	int i = 0;
+	char* env = envp[i];
+	pid_t ret = -1;
+	char* cmd = argv_to_str(argv);
+	WCHAR* wcmd, * wshell;
+	char tCmd[strlen(cmd)];
+	char tShell[strlen(shell)];
+	input = fd_to_handle(in, STD_INPUT_HANDLE);
+	output = fd_to_handle(out, STD_OUTPUT_HANDLE);
+	error = fd_to_handle(err, STD_ERROR_HANDLE);
+	lpszCurrentVariable = (LPTSTR)chNewEnv;
+	while(env != NULL)
+	{
+		if(FAILED(strcpy(lpszCurrentVariable, TEXT(env))))
+		{
+			return FALSE;
+		}
+		lpszCurrentVariable += lstrlen(lpszCurrentVariable) + 1;
+		i++;
+		env = envp[i];
+	}
+	*lpszCurrentVariable = (TCHAR)0;
+	strcpy(tCmd, cmd);
+	strcpy(tShell, shell);
+	wshell = str_to_wstr(tShell, strlen(tShell));
+	wcmd = str_to_wstr(tCmd, strlen(tCmd));
+	ret = child_result(CreateChild(wshell, wcmd, input, output, error, (LPVOID)chNewEnv), P_NOWAIT);
+	free(wshell);
+	free(wcmd);
+	free(cmd);
+	return ret;
 }
 
-pid_t
-spawnv(const char *shell, char *const argv[], mrb_value in, mrb_value out, mrb_value err)
+pid_t spawnv(const char* shell, char* const argv[], mrb_value in, mrb_value out, mrb_value err)
 {
-    WCHAR *wcmd, *wshell;
-    pid_t ret = -1;
-    char *cmd = argv_to_str(argv);
-    char tShell[strlen(shell)];
-    HANDLE input, output, error;
-
-    strcpy(tShell, shell);
-
-    input  = fd_to_handle(in, STD_INPUT_HANDLE);
-    output = fd_to_handle(out, STD_OUTPUT_HANDLE);
-    error  = fd_to_handle(err, STD_ERROR_HANDLE);
-
-    wshell = str_to_wstr(tShell, strlen(tShell));
-    wcmd   = str_to_wstr(cmd, strlen(cmd));
-
-    ret = child_result(CreateChild(wshell, wcmd, input, output, error, NULL), P_NOWAIT);
-
-    free(wshell);
-    free(wcmd);
-    free(cmd);
-
-    return ret;
+	WCHAR* wcmd, * wshell;
+	pid_t ret = -1;
+	char* cmd = argv_to_str(argv);
+	char tShell[strlen(shell)];
+	HANDLE input, output, error;
+	strcpy(tShell, shell);
+	input = fd_to_handle(in, STD_INPUT_HANDLE);
+	output = fd_to_handle(out, STD_OUTPUT_HANDLE);
+	error = fd_to_handle(err, STD_ERROR_HANDLE);
+	wshell = str_to_wstr(tShell, strlen(tShell));
+	wcmd = str_to_wstr(cmd, strlen(cmd));
+	ret = child_result(CreateChild(wshell, wcmd, input, output, error, NULL), P_NOWAIT);
+	free(wshell);
+	free(wcmd);
+	free(cmd);
+	return ret;
 }
 
-static FARPROC
-get_proc_address(const char *module, const char *func, HANDLE *mh)
+static FARPROC get_proc_address(const char* module, const char* func, HANDLE* mh)
 {
-    HANDLE h;
-    FARPROC ptr;
-
-    if (mh)
-        h = LoadLibrary(module);
-    else
-        h = GetModuleHandle(module);
-
-    if (!h)
-        return NULL;
-
-    ptr = GetProcAddress(h, func);
-
-    if (mh) {
-        if (ptr)
-            *mh = h;
-        else
-            FreeLibrary(h);
-    }
-
-    return ptr;
+	HANDLE h;
+	FARPROC ptr;
+	if(mh)
+	{
+		h = LoadLibrary(module);
+	}
+	else
+	{
+		h = GetModuleHandle(module);
+	}
+	if(!h)
+	{
+		return NULL;
+	}
+	ptr = GetProcAddress(h, func);
+	if(mh)
+	{
+		if(ptr)
+		{
+			*mh = h;
+		}
+		else
+		{
+			FreeLibrary(h);
+		}
+	}
+	return ptr;
 }
 
-static struct ChildRecord *
-CreateChild(const WCHAR *shell, const WCHAR *cmd, HANDLE hIn, HANDLE hOut, HANDLE hErr, LPVOID env)
+static struct ChildRecord* CreateChild(const WCHAR* shell, const WCHAR* cmd, HANDLE hIn, HANDLE hOut, HANDLE hErr, LPVOID env)
 {
-    BOOL fRet;
-    STARTUPINFOW si;
-    PROCESS_INFORMATION pi;
-    SECURITY_ATTRIBUTES sa;
-    struct ChildRecord *child;
-
-    if (!cmd && !shell)
-        return NULL;
-
-    child = FindFreeChildSlot();
-
-    if (!child)
-        return NULL;
-
-    sa.nLength              = sizeof(SECURITY_ATTRIBUTES);
-    sa.lpSecurityDescriptor = NULL;
-    sa.bInheritHandle       = TRUE;
-
-    ZeroMemory(&si, sizeof(si));
-    ZeroMemory(&pi, sizeof(pi));
-
-    si.cb          = sizeof(si);
-    si.dwFlags    |= STARTF_USESHOWWINDOW;
-    si.wShowWindow = SW_HIDE;
-    si.dwFlags    |= STARTF_USESTDHANDLES;
-    si.hStdInput   = hIn;
-    si.hStdOutput  = hOut;
-    si.hStdError   = hErr;
-
-    if (lstrlenW(cmd) > 32767) {
-        child->pid = 0;
-        return NULL;
-    }
-
-    fRet = CreateProcessW(shell, (WCHAR *)cmd, &sa, &sa,
-                          TRUE, NORMAL_PRIORITY_CLASS, env, NULL,
-                          &si, &pi);
-
-    if (!fRet) {
-        child->pid = 0;
-        return NULL;
-    }
-
-    CloseHandle(pi.hThread);
-
-    child->hProcess = pi.hProcess;
-    child->pid      = (pid_t)pi.dwProcessId;
-
-    return child;
+	BOOL fRet;
+	STARTUPINFOW si;
+	PROCESS_INFORMATION pi;
+	SECURITY_ATTRIBUTES sa;
+	struct ChildRecord* child;
+	if(!cmd && !shell)
+	{
+		return NULL;
+	}
+	child = FindFreeChildSlot();
+	if(!child)
+	{
+		return NULL;
+	}
+	sa.nLength = sizeof(SECURITY_ATTRIBUTES);
+	sa.lpSecurityDescriptor = NULL;
+	sa.bInheritHandle = TRUE;
+	ZeroMemory(&si, sizeof(si));
+	ZeroMemory(&pi, sizeof(pi));
+	si.cb = sizeof(si);
+	si.dwFlags |= STARTF_USESHOWWINDOW;
+	si.wShowWindow = SW_HIDE;
+	si.dwFlags |= STARTF_USESTDHANDLES;
+	si.hStdInput = hIn;
+	si.hStdOutput = hOut;
+	si.hStdError = hErr;
+	if(lstrlenW(cmd) > 32767)
+	{
+		child->pid = 0;
+		return NULL;
+	}
+	fRet = CreateProcessW(shell, (WCHAR*)cmd, &sa, &sa,
+		TRUE, NORMAL_PRIORITY_CLASS, env, NULL,
+		&si, &pi);
+	if(!fRet)
+	{
+		child->pid = 0;
+		return NULL;
+	}
+	CloseHandle(pi.hThread);
+	child->hProcess = pi.hProcess;
+	child->pid = (pid_t)pi.dwProcessId;
+	return child;
 }
 
-static pid_t
-child_result(struct ChildRecord *child, int mode)
+static pid_t child_result(struct ChildRecord* child, int mode)
 {
-    DWORD exitcode;
-
-    if (!child)
-        return -1;
-
-    if (mode == P_OVERLAY) {
-        WaitForSingleObject(child->hProcess, INFINITE);
-        GetExitCodeProcess(child->hProcess, &exitcode);
-        CloseChildHandle(child);
-        _exit(exitcode);
-    }
-
-    return child->pid;
+	DWORD exitcode;
+	if(!child)
+	{
+		return -1;
+	}
+	if(mode == P_OVERLAY)
+	{
+		WaitForSingleObject(child->hProcess, INFINITE);
+		GetExitCodeProcess(child->hProcess, &exitcode);
+		CloseChildHandle(child);
+		_exit(exitcode);
+	}
+	return child->pid;
 }
 
-static pid_t
-poll_child_status(struct ChildRecord *child, int *stat_loc)
+static pid_t poll_child_status(struct ChildRecord* child, int* stat_loc)
 {
-    DWORD exitcode;
-
-    if (!GetExitCodeProcess(child->hProcess, &exitcode)) {
-        /* If an error occurred, return immediately. */
-    error_exit:
-        CloseChildHandle(child);
-        return -1;
-    }
-
-    if (exitcode != STILL_ACTIVE) {
-        pid_t pid;
-
-        /* If already died, wait process's real termination. */
-        if (WaitForSingleObject(child->hProcess, INFINITE) != WAIT_OBJECT_0) {
-            goto error_exit;
-        }
-
-        pid = child->pid;
-        CloseChildHandle(child);
-
-        if (stat_loc)
-            *stat_loc = exitcode << 8;
-
-        return pid;
-    }
-
-    return 0;
+	DWORD exitcode;
+	if(!GetExitCodeProcess(child->hProcess, &exitcode))
+	{
+		/* If an error occurred, return immediately. */
+	error_exit:
+		CloseChildHandle(child);
+		return -1;
+	}
+	if(exitcode != STILL_ACTIVE)
+	{
+		pid_t pid;
+		/* If already died, wait process's real termination. */
+		if(WaitForSingleObject(child->hProcess, INFINITE) != WAIT_OBJECT_0)
+		{
+			goto error_exit;
+		}
+		pid = child->pid;
+		CloseChildHandle(child);
+		if(stat_loc)
+		{
+			*stat_loc = exitcode << 8;
+		}
+		return pid;
+	}
+	return 0;
 }
 
-static struct ChildRecord *
-FindChildSlot(pid_t pid)
+static struct ChildRecord* FindChildSlot(pid_t pid)
 {
-    FOREACH_CHILD(child) {
-        if (pid == -1 || child->pid == pid)
-            return child;
-    } END_FOREACH_CHILD;
-
-    return NULL;
+	FOREACH_CHILD(child)
+	{
+		if(pid == -1 || child->pid == pid)
+		{
+			return child;
+		}
+	} END_FOREACH_CHILD;
+	return NULL;
 }
 
-static struct ChildRecord *
-FindChildSlotByHandle(HANDLE h)
+static struct ChildRecord* FindChildSlotByHandle(HANDLE h)
 {
-    FOREACH_CHILD(child) {
-        if (child->hProcess == h)
-            return child;
-    } END_FOREACH_CHILD;
-
-    return NULL;
+	FOREACH_CHILD(child)
+	{
+		if(child->hProcess == h)
+		{
+			return child;
+		}
+	} END_FOREACH_CHILD;
+	return NULL;
 }
 
-static struct ChildRecord *
-FindFreeChildSlot(void)
+static struct ChildRecord* FindFreeChildSlot(void)
 {
-    FOREACH_CHILD(child) {
-        if (!child->pid) {
-            child->pid      = -1;
-            child->hProcess = NULL;
-
-            return child;
-        }
-    } END_FOREACH_CHILD;
-
-    return NULL;
+	FOREACH_CHILD(child)
+	{
+		if(!child->pid)
+		{
+			child->pid = -1;
+			child->hProcess = NULL;
+			return child;
+		}
+	} END_FOREACH_CHILD;
+	return NULL;
 }
 
-static void
-CloseChildHandle(struct ChildRecord *child)
+static void CloseChildHandle(struct ChildRecord* child)
 {
-    HANDLE h        = child->hProcess;
-    child->hProcess = NULL;
-    child->pid      = 0;
-
-    CloseHandle(h);
+	HANDLE h = child->hProcess;
+	child->hProcess = NULL;
+	child->pid = 0;
+	CloseHandle(h);
 }
 
-static char*
-argv_to_str(char* const* argv)
+static char* argv_to_str(char* const* argv)
 {
-    char args[8191];
-    int i     = 0;
-    char* arg = argv[i];
-
-    while (arg != NULL) {
-        if (i == 0)
-            sprintf(args, "%s", arg);
-        else
-            sprintf(args, "%s %s", args, arg);
-
-        i++;
-        arg = argv[i];
-    }
-
-    return strdup(args);
+	char args[8191];
+	int i = 0;
+	char* arg = argv[i];
+	while(arg != NULL)
+	{
+		if(i == 0)
+		{
+			sprintf(args, "%s", arg);
+		}
+		else
+		{
+			sprintf(args, "%s %s", args, arg);
+		}
+		i++;
+		arg = argv[i];
+	}
+	return strdup(args);
 }
 
-static WCHAR*
-str_to_wstr(const char *utf8, int mlen)
+static WCHAR* str_to_wstr(const char* utf8, int mlen)
 {
-    int wlen = MultiByteToWideChar(CP_UTF8, 0, utf8, mlen, NULL, 0);
-    wchar_t* utf16 = (wchar_t*)malloc((wlen+1) * sizeof(wchar_t));
+	int wlen = MultiByteToWideChar(CP_UTF8, 0, utf8, mlen, NULL, 0);
+	wchar_t* utf16 = (wchar_t*)malloc((wlen + 1) * sizeof(wchar_t));
+	if(utf16 == NULL)
+	{
+		return NULL;
+	}
 
-    if (utf16 == NULL)
-        return NULL;
-
-    if (MultiByteToWideChar(CP_UTF8, 0, utf8, mlen, utf16, wlen) > 0)
-        utf16[wlen] = 0;
-
-    return utf16;
+	if(MultiByteToWideChar(CP_UTF8, 0, utf8, mlen, utf16, wlen) > 0)
+	{
+		utf16[wlen] = 0;
+	}
+	return utf16;
 }
 
-static HANDLE
-fd_to_handle(mrb_value fd, int std_fd)
+static HANDLE fd_to_handle(mrb_value fd, int std_fd)
 {
-    if (!mrb_fixnum_p(fd)) {
-        return GetStdHandle(std_fd);
-    } else {
-        return (HANDLE) _get_osfhandle(mrb_fixnum(fd));
-    }
+	if(!mrb_fixnum_p(fd))
+	{
+		return GetStdHandle(std_fd);
+	}
+	else
+	{
+		return (HANDLE)_get_osfhandle(mrb_fixnum(fd));
+	}
 }

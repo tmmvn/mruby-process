@@ -19,39 +19,21 @@
 # LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
-
 require "#{MRUBY_ROOT}/lib/mruby/source"
 
 def target_win32?
-  return true if RUBY_PLATFORM =~ /mingw|mswin/
-  build.is_a?(MRuby::CrossBuild) && build.host_target.to_s =~ /mingw/
+	return true if RUBY_PLATFORM =~ /mingw|mswin/
+	build.is_a?(MRuby::CrossBuild) && build.host_target.to_s =~ /mingw/
 end
 
 MRuby::Gem::Specification.new('mruby-process') do |spec|
-  spec.license = 'MIT'
-  spec.authors = 'Sebastián Katzer, appPlant GmbH'
-
-  spec.add_test_dependency 'mruby-env',   mgem: 'mruby-env'
-  spec.add_test_dependency 'mruby-os',    mgem: 'mruby-os'
-
-  if MRuby::Source::MRUBY_VERSION >= '1.4.0'
-    spec.add_test_dependency 'mruby-io',  core: 'mruby-io'
-  else
-    spec.add_test_dependency 'mruby-io',  mgem: 'mruby-io'
-  end
-
-  spec.mruby.cc.defines << 'HAVE_MRB_PROCESS_H'
-  spec.cc.include_paths << "#{spec.dir}/include/mruby/ext"
-
-  if build.test_enabled?
-    ENV['RAND'] = Time.now.to_i.to_s
-    ENV['_TMP'] = File.join(dir, 'tmp')
-    FileUtils.mkdir_p(ENV['_TMP'])
-  end
-
-  if target_win32?
-    spec.objs.delete objfile("#{build_dir}/src/posix")
-  else
-    spec.objs.delete objfile("#{build_dir}/src/win32")
-  end
+	spec.license = 'MIT'
+	spec.authors = 'Sebastián Katzer, appPlant GmbH'
+	spec.mruby.cc.defines << 'HAVE_MRB_PROCESS_H'
+	spec.cc.include_paths << "#{spec.dir}/include/mruby/ext"
+	if target_win32?
+		spec.objs.delete objfile("#{build_dir}/src/posix")
+	else
+		spec.objs.delete objfile("#{build_dir}/src/win32")
+	end
 end

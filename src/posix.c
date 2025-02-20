@@ -18,9 +18,7 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
-
 #include "mruby.h"
-
 #include <spawn.h>
 #include <stdlib.h>
 #include <string.h>
@@ -28,68 +26,64 @@
 #include <sys/stat.h>
 #include <fcntl.h>
 
-extern char **environ;
+extern char** environ;
 
-mrb_value
-mrb_argv0(mrb_state *mrb)
+mrb_value mrb_argv0(mrb_state* mrb)
 {
-    const char *argv0 = getenv("_");
-
-    if (!argv0)
-        return mrb_nil_value();
-
-    return mrb_str_new_cstr(mrb,argv0);
+	const char* argv0 = getenv("_");
+	if(!argv0)
+	{
+		return mrb_nil_value();
+	}
+	return mrb_str_new_cstr(mrb, argv0);
 }
 
-mrb_value
-mrb_progname(mrb_state *mrb)
+mrb_value mrb_progname(mrb_state* mrb)
 {
-    const char *argv0 = getenv("_");
-    const char *progname;
-
-    if (!argv0)
-        return mrb_nil_value();
-
-    progname = strrchr(argv0, '/');
-
-    if (progname)
-        progname++;
-    else
-        progname = argv0;
-
-    return mrb_str_new_cstr(mrb, progname);
+	const char* argv0 = getenv("_");
+	const char* progname;
+	if(!argv0)
+	{
+		return mrb_nil_value();
+	}
+	progname = strrchr(argv0, '/');
+	if(progname)
+	{
+		progname++;
+	}
+	else
+	{
+		progname = argv0;
+	}
+	return mrb_str_new_cstr(mrb, progname);
 }
 
-pid_t
-spawnve(const char *path, char *const argv[], char *const envp[], mrb_value in, mrb_value out, mrb_value err)
+pid_t spawnve(const char* path, char* const argv[], char* const envp[], mrb_value in, mrb_value out, mrb_value err)
 {
-    pid_t pid;
-    posix_spawn_file_actions_t action;
-
-    posix_spawn_file_actions_init(&action);
-
-    if (mrb_fixnum_p(in)) {
-        posix_spawn_file_actions_adddup2(&action, mrb_fixnum(in), 0);
-    }
-
-    if (mrb_fixnum_p(out)) {
-        posix_spawn_file_actions_adddup2(&action, mrb_fixnum(out), 1);
-    }
-
-    if (mrb_fixnum_p(err)) {
-        posix_spawn_file_actions_adddup2(&action, mrb_fixnum(err), 2);
-    }
-
-    if (posix_spawn(&pid, path, &action, NULL, argv, envp) != 0)
-        return -1;
-
-    posix_spawn_file_actions_destroy(&action);
-
-    return pid;
+	pid_t pid;
+	posix_spawn_file_actions_t action;
+	posix_spawn_file_actions_init(&action);
+	if(mrb_fixnum_p(in))
+	{
+		posix_spawn_file_actions_adddup2(&action, mrb_fixnum(in), 0);
+	}
+	if(mrb_fixnum_p(out))
+	{
+		posix_spawn_file_actions_adddup2(&action, mrb_fixnum(out), 1);
+	}
+	if(mrb_fixnum_p(err))
+	{
+		posix_spawn_file_actions_adddup2(&action, mrb_fixnum(err), 2);
+	}
+	if(posix_spawn(&pid, path, &action, NULL, argv, envp) != 0)
+	{
+		return -1;
+	}
+	posix_spawn_file_actions_destroy(&action);
+	return pid;
 }
 
-pid_t
-spawnv(const char *path, char *const argv[], mrb_value in, mrb_value out, mrb_value err)
+pid_t spawnv(const char* path, char* const argv[], mrb_value in, mrb_value out, mrb_value err)
 {
-    return spawnve(path, argv, environ, in, out, err);
+	return spawnve(path, argv, environ, in, out, err);
 }

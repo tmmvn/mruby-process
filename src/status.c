@@ -18,137 +18,117 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
-
 #include "mruby.h"
 #include "mruby/variable.h"
 #include "mruby/ext/process.h"
 
-static mrb_value
-mrb_pst_new(mrb_state *mrb, pid_t pid, mrb_int status)
+static mrb_value mrb_pst_new(mrb_state* mrb, pid_t pid, mrb_int status)
 {
-    struct RClass *p, *s;
-    p = mrb_module_get(mrb, "Process");
-    s = mrb_class_get_under(mrb, p, "Status");
-
-    return mrb_funcall(mrb, mrb_obj_value(s), "new", 2,
-                       mrb_fixnum_value(pid), mrb_fixnum_value(status));
+	struct RClass* p, * s;
+	p = mrb_module_get(mrb, "Process");
+	s = mrb_class_get_under(mrb, p, "Status");
+	return mrb_funcall(mrb, mrb_obj_value(s), "new", 2,
+		mrb_fixnum_value(pid), mrb_fixnum_value(status));
 }
 
-static int
-mrb_pst_last_status_get(mrb_state *mrb, mrb_value self)
+static int mrb_pst_last_status_get(mrb_state* mrb, mrb_value self)
 {
-    return mrb_fixnum(mrb_iv_get(mrb, self, mrb_intern_lit(mrb, "@status")));
+	return mrb_fixnum(mrb_iv_get(mrb, self, mrb_intern_lit(mrb, "@status")));
 }
 
-static void
-mrb_pst_last_status_set(mrb_state *mrb, mrb_value pst)
+static void mrb_pst_last_status_set(mrb_state* mrb, mrb_value pst)
 {
-    mrb_gv_set(mrb, mrb_intern_lit(mrb, "$?"), pst);
-    mrb_gv_set(mrb, mrb_intern_lit(mrb, "$CHILD_STATUS"), pst);
+	mrb_gv_set(mrb, mrb_intern_lit(mrb, "$?"), pst);
+	mrb_gv_set(mrb, mrb_intern_lit(mrb, "$CHILD_STATUS"), pst);
 }
 
-void
-mrb_last_status_set(mrb_state *mrb, pid_t pid, mrb_int status)
+void mrb_last_status_set(mrb_state* mrb, pid_t pid, mrb_int status)
 {
-    mrb_pst_last_status_set(mrb, mrb_pst_new(mrb, pid, status));
+	mrb_pst_last_status_set(mrb, mrb_pst_new(mrb, pid, status));
 }
 
-mrb_value
-mrb_last_status_get(mrb_state *mrb)
+mrb_value mrb_last_status_get(mrb_state* mrb)
 {
-    return mrb_gv_get(mrb, mrb_intern_lit(mrb, "$?"));
+	return mrb_gv_get(mrb, mrb_intern_lit(mrb, "$?"));
 }
 
-void
-mrb_last_status_clear(mrb_state *mrb)
+void mrb_last_status_clear(mrb_state* mrb)
 {
-    return mrb_pst_last_status_set(mrb, mrb_nil_value());
+	return mrb_pst_last_status_set(mrb, mrb_nil_value());
 }
 
-static mrb_value
-mrb_pst_wcoredump(mrb_state *mrb, mrb_value self)
+static mrb_value mrb_pst_wcoredump(mrb_state* mrb, mrb_value self)
 {
 #ifdef WCOREDUMP
-    int i = mrb_pst_last_status_get(mrb, self);
-    return mrb_bool_value(WCOREDUMP(i));
+	int i = mrb_pst_last_status_get(mrb, self);
+	return mrb_bool_value(WCOREDUMP(i));
 #else
-    return mrb_false_value();
+	return mrb_false_value();
 #endif
 }
 
-static mrb_value
-mrb_pst_wexitstatus(mrb_state *mrb, mrb_value self)
+static mrb_value mrb_pst_wexitstatus(mrb_state* mrb, mrb_value self)
 {
-    int i = mrb_pst_last_status_get(mrb, self);
-
-    if (WIFEXITED(i))
-        return mrb_fixnum_value(WEXITSTATUS(i));
-
-    return mrb_nil_value();
+	int i = mrb_pst_last_status_get(mrb, self);
+	if(WIFEXITED(i))
+	{
+		return mrb_fixnum_value(WEXITSTATUS(i));
+	}
+	return mrb_nil_value();
 }
 
-static mrb_value
-mrb_pst_wifexited(mrb_state *mrb, mrb_value self)
+static mrb_value mrb_pst_wifexited(mrb_state* mrb, mrb_value self)
 {
-    int i = mrb_pst_last_status_get(mrb, self);
-
-    return mrb_bool_value(WIFEXITED(i));
+	int i = mrb_pst_last_status_get(mrb, self);
+	return mrb_bool_value(WIFEXITED(i));
 }
 
-static mrb_value
-mrb_pst_wifsignaled(mrb_state *mrb, mrb_value self)
+static mrb_value mrb_pst_wifsignaled(mrb_state* mrb, mrb_value self)
 {
-    int i = mrb_pst_last_status_get(mrb, self);
-
-    return mrb_bool_value(WIFSIGNALED(i));
+	int i = mrb_pst_last_status_get(mrb, self);
+	return mrb_bool_value(WIFSIGNALED(i));
 }
 
-static mrb_value
-mrb_pst_wifstopped(mrb_state *mrb, mrb_value self)
+static mrb_value mrb_pst_wifstopped(mrb_state* mrb, mrb_value self)
 {
-    int i = mrb_pst_last_status_get(mrb, self);
-
-    return mrb_bool_value(WIFSTOPPED(i));
+	int i = mrb_pst_last_status_get(mrb, self);
+	return mrb_bool_value(WIFSTOPPED(i));
 }
 
-static mrb_value
-mrb_pst_wstopsig(mrb_state *mrb, mrb_value self)
+static mrb_value mrb_pst_wstopsig(mrb_state* mrb, mrb_value self)
 {
-    int i = mrb_pst_last_status_get(mrb, self);
-
-    if (WIFSTOPPED(i))
-        return mrb_fixnum_value(WSTOPSIG(i));
-
-    return mrb_nil_value();
+	int i = mrb_pst_last_status_get(mrb, self);
+	if(WIFSTOPPED(i))
+	{
+		return mrb_fixnum_value(WSTOPSIG(i));
+	}
+	return mrb_nil_value();
 }
 
-static mrb_value
-mrb_pst_wtermsig(mrb_state *mrb, mrb_value self)
+static mrb_value mrb_pst_wtermsig(mrb_state* mrb, mrb_value self)
 {
-    int i = mrb_pst_last_status_get(mrb, self);
-
-    if (WIFSIGNALED(i)) {
-        return mrb_fixnum_value(WTERMSIG(i));
-    } else {
-        return mrb_nil_value();
-    }
+	int i = mrb_pst_last_status_get(mrb, self);
+	if(WIFSIGNALED(i))
+	{
+		return mrb_fixnum_value(WTERMSIG(i));
+	}
+	else
+	{
+		return mrb_nil_value();
+	}
 }
 
-void
-mrb_mruby_process_gem_procstat_init(mrb_state *mrb)
+void mrb_mruby_process_gem_procstat_init(mrb_state* mrb)
 {
-    struct RClass *p, *s;
-
-    p = mrb_module_get(mrb, "Process");
-    s = mrb_define_class_under(mrb, p, "Status", mrb->object_class);
-
-    mrb_define_method(mrb, s, "coredump?",  mrb_pst_wcoredump, MRB_ARGS_NONE());
-    mrb_define_method(mrb, s, "exited?",    mrb_pst_wifexited, MRB_ARGS_NONE());
-    mrb_define_method(mrb, s, "exitstatus", mrb_pst_wexitstatus, MRB_ARGS_NONE());
-    mrb_define_method(mrb, s, "signaled?",  mrb_pst_wifsignaled, MRB_ARGS_NONE());
-    mrb_define_method(mrb, s, "stopped?",   mrb_pst_wifstopped, MRB_ARGS_NONE());
-    mrb_define_method(mrb, s, "stopsig",    mrb_pst_wstopsig, MRB_ARGS_NONE());
-    mrb_define_method(mrb, s, "termsig",    mrb_pst_wtermsig, MRB_ARGS_NONE());
-
-    mrb_last_status_clear(mrb);
+	struct RClass* p, * s;
+	p = mrb_module_get(mrb, "Process");
+	s = mrb_define_class_under(mrb, p, "Status", mrb->object_class);
+	mrb_define_method(mrb, s, "coredump?", mrb_pst_wcoredump, MRB_ARGS_NONE());
+	mrb_define_method(mrb, s, "exited?", mrb_pst_wifexited, MRB_ARGS_NONE());
+	mrb_define_method(mrb, s, "exitstatus", mrb_pst_wexitstatus, MRB_ARGS_NONE());
+	mrb_define_method(mrb, s, "signaled?", mrb_pst_wifsignaled, MRB_ARGS_NONE());
+	mrb_define_method(mrb, s, "stopped?", mrb_pst_wifstopped, MRB_ARGS_NONE());
+	mrb_define_method(mrb, s, "stopsig", mrb_pst_wstopsig, MRB_ARGS_NONE());
+	mrb_define_method(mrb, s, "termsig", mrb_pst_wtermsig, MRB_ARGS_NONE());
+	mrb_last_status_clear(mrb);
 }
